@@ -12,23 +12,24 @@ unsigned long lastTime, lastRPMTime;
 double Input, Output, Setpoint;
 double errSum, lastErr;
 double kp, ki, kd;
+int pos;
 
-volatile int encoderCount = 0;
-const int PPR = 100; // Pulses per Revolution (sesuaikan dengan spesifikasi encoder)
-double rpm = 0;
+// volatile int encoderCount = 0;
+// const int PPR = 100; // Pulses per Revolution (sesuaikan dengan spesifikasi encoder)
+// double rpm = 0;
 
 void Compute();
 void SetTunings(double Kp, double Ki, double Kd);
 void readEncoder();
-void calculateRPM();
+// void calculateRPM();
 
 void setup() {
   Serial.begin(9600);
   
   // Encoder pins
-  pinMode(ENC_A, INPUT_PULLUP);
-  pinMode(ENC_B, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(ENC_A), readEncoder, CHANGE);
+  pinMode(ENC_A, INPUT);
+  pinMode(ENC_B, INPUT);
+  attachInterrupt(digitalPinToInterrupt(ENC_A), readEncoder, RISING);
 
   // Motor driver pins
   pinMode(IN1, OUTPUT);
@@ -53,33 +54,50 @@ void loop() {
   SetTunings(Kp, Ki, Kd);
   
   // Calculate RPM
-  calculateRPM();
+  // calculateRPM();
 
   // Update PID input with RPM
-  Input = rpm;
+  Input = pos;
   
   // Compute PID
   Compute();
   
-  // Constrain output to 0-255
-  Output = constrain(Output, 0, 255);
+  // // Constrain output to 0-255
+  // Output = constrain(Output, 0, 255);
   
-  // Write output to motor driver
-  if (Output > 0) {
-    analogWrite(IN1, Output);
-    analogWrite(IN2, 0);
-  } else {
-    analogWrite(IN1, 0);
-    analogWrite(IN2, 0);
+  // // Write output to motor driver
+  // if (Output > 0) {
+  //   analogWrite(IN1, Output);
+  //   analogWrite(IN2, 0);
+  // } else {
+  //   analogWrite(IN1, 0);
+  //   analogWrite(IN2, 0);
+  // }
+
+   // motor power
+  float pwr = fabs(Output);
+  if( pwr > 255 ){
+    pwr = 255;
   }
+ 
+  // motor direction
+  int dir = 1;
+  if(Output<0){
+    dir = -1;
+  }
+ 
+  // signal the motor
+  setMotor(dir,pwr,IN1,IN2);
   
   // Debugging output
   Serial.print("Setpoint: ");
   Serial.print(Setpoint);
-  Serial.print(", RPM: ");
-  Serial.print(rpm);
+  Serial.print(", Pos: ");
+  Serial.print(pos);
+  // Serial.print(", Encoder Count: ");
+  // Serial.print(encoderCount); // Debugging
   Serial.print(", Output: ");
-  Serial.println(Output);
+  Serial.println(pwr);
 
   // Print to LCD with one decimal place
   lcd.setCursor(0,0);
@@ -128,22 +146,42 @@ void SetTunings(double Kp, double Ki, double Kd) {
 }
 
 void readEncoder() {
-  // Update encoder count based on direction
-  if (digitalRead(ENC_A) == digitalRead(ENC_B)) {
-    encoderCount++;
-  } else {
-    encoderCount--;
+  int b = digitalRead(ENC_B);
+  if(b > 0){
+    pos++;
+  }
+  else{
+    pos--;
   }
 }
 
-void calculateRPM() {
-  unsigned long now = millis();
-  double elapsedTime = (now - lastRPMTime) / 1000.0; // Convert to seconds
-  
-  // Calculate RPM
-  rpm = (encoderCount / (double)PPR) / elapsedTime * 60.0;
-  
-  // Reset encoder count and update lastRPMTime
-  encoderCount = 0;
-  lastRPMTime = now;
+void setMotor(int dir, int pwmVal, int in1, int in2){
+  if(dir == 1){
+    analogWrite(in1,pwmVal);
+    analogWrite(in2,LOW);
+  }
+  else if(dir == -1){
+    analogWrite(in1,LOW);
+    analogWrite(in2,pwmVal);
+  }
+  else{
+    analogWrite(in1,LOW);
+    analogWrite(in2,LOW);
+  }  
 }
+
+// void calculateRPM() {
+//   unsigned long now = millis();
+//   double elapsedTime = (now - lastRPMTime) / 1000.0; // Waktu dalam detik
+  
+//   // Hindari pembagian dengan nol
+//   if (elapsedTime > 0) {
+//     rpm = (encoderCount / (double)PPR) / elapsedTime * 60.0;
+//   } else {
+//     rpm = 0; // Jika elapsedTime terlalu kecil, anggap RPM = 0
+//   }
+
+//   // Reset encoder count dan update waktu terakhir
+//   encoderCount = 0;
+//   lastRPMTime = now;
+// }
