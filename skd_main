@@ -1,0 +1,149 @@
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h>
+#define ENC_A 2
+#define ENC_B 3
+#define IN1 5
+#define IN2 6
+
+LiquidCrystal_I2C lcd(0x27,20,4);  // set the LCD address to 0x27 for a 16 chars and 2 line display
+
+char tempBuffer[10]; // Buffer to hold formatted string
+unsigned long lastTime, lastRPMTime;
+double Input, Output, Setpoint;
+double errSum, lastErr;
+double kp, ki, kd;
+
+volatile int encoderCount = 0;
+const int PPR = 100; // Pulses per Revolution (sesuaikan dengan spesifikasi encoder)
+double rpm = 0;
+
+void Compute();
+void SetTunings(double Kp, double Ki, double Kd);
+void readEncoder();
+void calculateRPM();
+
+void setup() {
+  Serial.begin(9600);
+  
+  // Encoder pins
+  pinMode(ENC_A, INPUT_PULLUP);
+  pinMode(ENC_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENC_A), readEncoder, CHANGE);
+
+  // Motor driver pins
+  pinMode(IN1, OUTPUT);
+  pinMode(IN2, OUTPUT);
+  
+  // Initialize variables
+  lastTime = millis();
+  lastRPMTime = millis();
+  errSum = 0;
+  lastErr = 0;
+
+  lcd.init();
+  lcd.backlight();
+}
+
+void loop() {
+  // Update setpoint and PID tunings from potentiometers
+  Setpoint = analogRead(A0) * 0.25; // Scale to 0-255
+  double Kp = analogRead(A1) * 0.1; // Scale to appropriate range
+  double Ki = analogRead(A2) * 0.01; // Scale to appropriate range
+  double Kd = 0; // If you want, enable tuning via A3
+  SetTunings(Kp, Ki, Kd);
+  
+  // Calculate RPM
+  calculateRPM();
+
+  // Update PID input with RPM
+  Input = rpm;
+  
+  // Compute PID
+  Compute();
+  
+  // Constrain output to 0-255
+  Output = constrain(Output, 0, 255);
+  
+  // Write output to motor driver
+  if (Output > 0) {
+    analogWrite(IN1, Output);
+    analogWrite(IN2, 0);
+  } else {
+    analogWrite(IN1, 0);
+    analogWrite(IN2, 0);
+  }
+  
+  // Debugging output
+  Serial.print("Setpoint: ");
+  Serial.print(Setpoint);
+  Serial.print(", RPM: ");
+  Serial.print(rpm);
+  Serial.print(", Output: ");
+  Serial.println(Output);
+
+  // Print to LCD with one decimal place
+  lcd.setCursor(0,0);
+  lcd.print("Sp:");
+  lcd.setCursor(3,0);
+  lcd.print(dtostrf(Setpoint, 5, 1, tempBuffer)); // 5 is width, 1 is decimal places
+  lcd.setCursor(8,0);
+  lcd.print("Kp:");
+  lcd.setCursor(11,0);
+  lcd.print(dtostrf(Kp, 5, 1, tempBuffer));
+
+  lcd.setCursor(0,1);
+  lcd.print("Ki:");
+  lcd.setCursor(3,1);
+  lcd.print(dtostrf(Ki, 5, 1, tempBuffer));
+  lcd.setCursor(8,1);
+  lcd.print("Kd:");
+  lcd.setCursor(11,1);
+  lcd.print(dtostrf(Kd, 5, 1, tempBuffer));
+  
+  delay(100); // Small delay for stability
+}
+
+void Compute() {
+  /* How long since we last calculated */
+  unsigned long now = millis();
+  double timeChange = (double)(now - lastTime);
+  
+  /* Compute all the working error variables */
+  double error = Setpoint - Input;
+  errSum += (error * timeChange);
+  double dErr = (error - lastErr) / timeChange;
+  
+  /* Compute PID Output */
+  Output = kp * error + ki * errSum + kd * dErr;
+  
+  /* Remember some variables for next time */
+  lastErr = error;
+  lastTime = now;
+}
+
+void SetTunings(double Kp, double Ki, double Kd) {
+  kp = Kp;
+  ki = Ki;
+  kd = Kd;
+}
+
+void readEncoder() {
+  // Update encoder count based on direction
+  if (digitalRead(ENC_A) == digitalRead(ENC_B)) {
+    encoderCount++;
+  } else {
+    encoderCount--;
+  }
+}
+
+void calculateRPM() {
+  unsigned long now = millis();
+  double elapsedTime = (now - lastRPMTime) / 1000.0; // Convert to seconds
+  
+  // Calculate RPM
+  rpm = (encoderCount / (double)PPR) / elapsedTime * 60.0;
+  
+  // Reset encoder count and update lastRPMTime
+  encoderCount = 0;
+  lastRPMTime = now;
+}
