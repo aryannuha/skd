@@ -1,20 +1,24 @@
-void Compute() {
-  unsigned long now = millis();
-  double timeChange = (double)(now - lastTime) / 1000.0; // Waktu dalam detik
-  if (timeChange == 0) return; // Hindari pembagian nol
+// Fungsi untuk menghitung sinyal kontrol menggunakan PID
+float calculatePID(int target, int pos, float kp, float kd, float ki) {
+  // time difference
+  long currT = micros();
+  float deltaT = ((float)(currT - prevT)) / (1.0e6);
+  prevT = currT;
 
-  double error = Setpoint - Input;
-  errSum += (error * timeChange);
-  double dErr = (error - lastErr) / timeChange;
+  // error
+  int e = pos - target;
 
-  Output = kp * error + ki * errSum + kd * dErr;
+  // derivative
+  float dedt = (e - eprev) / deltaT;
 
-  lastErr = error;
-  lastTime = now;
-}
+  // integral
+  eintegral = eintegral + e * deltaT;
 
-void SetTunings(double Kp, double Ki, double Kd) {
-  kp = Kp;
-  ki = Ki;
-  kd = Kd;
+  // control signal
+  float u = kp * e + kd * dedt + ki * eintegral;
+
+  // store previous error
+  eprev = e;
+
+  return u;
 }
