@@ -1,8 +1,9 @@
-void readEncoder() {
-  int b = digitalRead(ENC_B);
-  if (b > 0) {
+void readEncoder(){
+  int b = digitalRead(ENCB);
+  if(b > 0){
     pos++;
-  } else {
+  }
+  else{
     pos--;
   }
 }
